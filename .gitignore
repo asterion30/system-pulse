@@ -1,0 +1,14 @@
+# Rust build outputs
+target/
+
+# SQLite databases & local persistent data
+*.db
+*.db-journal
+*.sqlite
+
+# OS & Editor temporary files
+.DS_Store
+*.swp
+*~
+.idea/
+.vscode/

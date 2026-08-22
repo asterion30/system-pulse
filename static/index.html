@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Matrix1 SystemPulse - Monitoreo Linux & EOL SSD</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="background-glow"></div>
+    
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header-card glass-panel">
+            <div class="brand">
+                <div class="logo-icon">⚡</div>
+                <div>
+                    <h1>MATRIX1 SYSTEM PULSE</h1>
+                    <p class="subtitle">Monitoreo de Recursos & Predicción de Vida Útil SSD (Debian/Fedora)</p>
+                </div>
+            </div>
+            
+            <div class="system-meta">
+                <div class="meta-item">
+                    <span class="meta-label">HOSTNAME</span>
+                    <span id="sys-hostname" class="meta-value">--</span>
+                </div>
+                <div class="meta-item">
+                    <span class="meta-label">KERNEL / OS</span>
+                    <span id="sys-kernel" class="meta-value">--</span>
+                </div>
+                <div class="meta-item">
+                    <span class="meta-label">UPTIME</span>
+                    <span id="sys-uptime" class="meta-value">--</span>
+                </div>
+                <div class="status-badge" id="sys-status-badge">
+                    <span class="status-dot"></span>
+                    <span id="sys-status-text">CARGANDO</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Dashboard Grid -->
+        <main class="dashboard-grid">
+            <!-- CPU Gauge Card -->
+            <section class="card glass-panel">
+                <div class="card-header">
+                    <h2>🧠 Consumo de CPU</h2>
+                    <span id="cpu-count-label" class="badge">-- Cores</span>
+                </div>
+                <div class="gauge-wrapper">
+                    <svg class="gauge-svg" viewBox="0 0 160 160">
+                        <circle class="gauge-bg" cx="80" cy="80" r="65"></circle>
+                        <circle id="cpu-gauge-circle" class="gauge-progress cpu-progress" cx="80" cy="80" r="65" stroke-dasharray="408" stroke-dashoffset="408"></circle>
+                    </svg>
+                    <div class="gauge-center">
+                        <span id="cpu-pct" class="gauge-value">0%</span>
+                        <span class="gauge-label">USO TOTAL</span>
+                    </div>
+                </div>
+                <div id="cpu-cores-grid" class="cores-mini-grid">
+                    <!-- Core bars injected dynamically -->
+                </div>
+            </section>
+
+            <!-- Memory Gauge Card -->
+            <section class="card glass-panel">
+                <div class="card-header">
+                    <h2>💾 Memoria RAM & Swap</h2>
+                    <span id="ram-mb-label" class="badge">0 / 0 MB</span>
+                </div>
+                <div class="gauge-wrapper">
+                    <svg class="gauge-svg" viewBox="0 0 160 160">
+                        <circle class="gauge-bg" cx="80" cy="80" r="65"></circle>
+                        <circle id="ram-gauge-circle" class="gauge-progress ram-progress" cx="80" cy="80" r="65" stroke-dasharray="408" stroke-dashoffset="408"></circle>
+                    </svg>
+                    <div class="gauge-center">
+                        <span id="ram-pct" class="gauge-value">0%</span>
+                        <span class="gauge-label">RAM USADA</span>
+                    </div>
+                </div>
+                <div class="swap-bar-container">
+                    <div class="swap-header">
+                        <span>SWAP</span>
+                        <span id="swap-val-label">0 MB</span>
+                    </div>
+                    <div class="progress-bar-bg">
+                        <div id="swap-progress-fill" class="progress-bar-fill swap-fill" style="width: 0%;"></div>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+
+        <!-- Multi-Disk Storage Section -->
+        <section class="card glass-panel full-width-card">
+            <div class="card-header">
+                <h2>💽 Almacenamiento & Predicción de Vida Útil (SSD / HDD)</h2>
+                <span id="disks-count-badge" class="badge">0 Discos Detectados</span>
+            </div>
+            <div id="disks-container" class="disks-grid">
+                <!-- Disks injected dynamically -->
+            </div>
+        </section>
+
+        <!-- Top 5 Processes Section -->
+        <section class="grid-two-col">
+            <div class="card glass-panel">
+                <div class="card-header">
+                    <h3>🔥 Top 5 Procesos por CPU</h3>
+                </div>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>PID</th>
+                            <th>PROCESO</th>
+                            <th>CPU %</th>
+                            <th>MEMORIA</th>
+                        </tr>
+                    </thead>
+                    <tbody id="top-cpu-tbody">
+                        <!-- Injected dynamically -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="card glass-panel">
+                <div class="card-header">
+                    <h3>📊 Top 5 Procesos por Memoria</h3>
+                </div>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>PID</th>
+                            <th>PROCESO</th>
+                            <th>MEMORIA MB</th>
+                            <th>MEMORIA %</th>
+                        </tr>
+                    </thead>
+                    <tbody id="top-ram-tbody">
+                        <!-- Injected dynamically -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Actions & Threshold Schedule Controls -->
+        <section class="card glass-panel actions-panel">
+            <div class="card-header">
+                <h3>⚙️ Acciones & Programador de Umbrales (Schedule)</h3>
+                <button id="btn-manual-snapshot" class="btn btn-primary">
+                    <span class="btn-icon">📸</span> Guardar Estado Actual
+                </button>
+            </div>
+
+            <form id="threshold-form" class="threshold-controls-grid">
+                <div class="control-group">
+                    <label for="input-cpu-thresh">Umbral Alerta CPU (%):</label>
+                    <div class="input-with-val">
+                        <input type="range" id="input-cpu-thresh" min="50" max="98" step="1" value="90">
+                        <span id="lbl-cpu-thresh" class="mono-val">90%</span>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label for="input-ram-thresh">Umbral Alerta RAM (%):</label>
+                    <div class="input-with-val">
+                        <input type="range" id="input-ram-thresh" min="50" max="98" step="1" value="85">
+                        <span id="lbl-ram-thresh" class="mono-val">85%</span>
+                    </div>
+                </div>
+
+                <div class="control-group checkbox-group">
+                    <label class="switch">
+                        <input type="checkbox" id="chk-auto-capture" checked>
+                        <span class="slider round"></span>
+                    </label>
+                    <span>Captura Automática por Umbral</span>
+                </div>
+
+                <button type="submit" class="btn btn-secondary">Guardar Configuración</button>
+            </form>
+        </section>
+
+        <!-- Historical Snapshots Table -->
+        <section class="card glass-panel">
+            <div class="card-header">
+                <h3>📜 Histórico de Estado e Instantáneas</h3>
+                <span class="meta-label">ÚLTIMAS CAPTURAS ALMACENADAS</span>
+            </div>
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>FECHA / HORA</th>
+                            <th>DISPARADOR (TRIGGER)</th>
+                            <th>CPU</th>
+                            <th>RAM</th>
+                            <th>PROCESO PRINCIPAL</th>
+                            <th>ESTADO</th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-tbody">
+                        <tr>
+                            <td colspan="7" class="text-center">No hay instantáneas guardadas aún.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="toast hidden"></div>
+
+    <script src="/app.js"></script>
+</body>
+</html>

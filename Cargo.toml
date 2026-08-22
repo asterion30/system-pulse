@@ -1,0 +1,18 @@
+[package]
+name = "system-pulse"
+version = "0.1.0"
+edition = "2021"
+authors = ["Matrix1 Development Team"]
+description = "System resource monitor and SSD EOL estimator for Linux (Debian, Fedora, Arch)"
+
+[dependencies]
+tokio = { version = "1.43", features = ["full"] }
+axum = { version = "0.8", features = ["ws"] }
+sysinfo = "0.33"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rusqlite = { version = "0.33", features = ["bundled"] }
+chrono = { version = "0.4", features = ["serde"] }
+rust-embed = "8.6"
+mime_guess = "2.0"
+tower-http = { version = "0.6", features = ["cors", "fs"] }
