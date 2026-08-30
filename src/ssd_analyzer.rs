@@ -59,7 +59,12 @@ impl SsdAnalyzer {
     fn analyze_device(dev_name: &str) -> DiskHealthReport {
         let dev_path = format!("/sys/block/{}", dev_name);
 
-        // Try querying UDisks2 (GNOME Disks backend) via busctl for authentic SMART data
+        // 1. Try querying smartctl (smartmontools standard in headless/DietPi)
+        if let Some(smartctl_data) = Self::query_smartctl(dev_name) {
+            return smartctl_data;
+        }
+
+        // 2. Try querying UDisks2 (GNOME Disks backend) via busctl for authentic SMART data
         if let Some(udisks_data) = Self::query_udisks2(dev_name) {
             return udisks_data;
         }
@@ -443,6 +448,164 @@ impl SsdAnalyzer {
         None
     }
 
+    /// Queries authentic SMART data using `smartctl` (the standard utility on headless Linux / DietPi)
+    fn query_smartctl(dev_name: &str) -> Option<DiskHealthReport> {
+        let dev_full_path = format!("/dev/{}", dev_name);
+        let output = Command::new("smartctl")
+            .args(&["-j", "-a", &dev_full_path])
+            .output()
+            .ok()?;
+
+        if output.stdout.is_empty() {
+            return None;
+        }
+
+        let json_str = String::from_utf8_lossy(&output.stdout);
+        let v: serde_json::Value = serde_json::from_str(&json_str).ok()?;
+
+        let model = v["model_name"]
+            .as_str()
+            .or_else(|| v["device"]["model_name"].as_str())
+            .unwrap_or(dev_name)
+            .trim()
+            .to_string();
+
+        let serial = v["serial_number"]
+            .as_str()
+            .or_else(|| v["device"]["serial_number"].as_str())
+            .unwrap_or("N/D")
+            .trim()
+            .to_string();
+
+        let rotation_rate = v["rotation_rate"].as_u64().unwrap_or(0);
+        let is_hdd = rotation_rate > 0;
+        let is_nvme = dev_name.starts_with("nvme") || v["device"]["type"].as_str() == Some("nvme");
+
+        let drive_type = if is_hdd {
+            format!("HDD ({} RPM)", rotation_rate)
+        } else if is_nvme {
+            "SSD (NVMe)".to_string()
+        } else {
+            "SSD (SATA)".to_string()
+        };
+
+        let power_on_hours = v["power_on_time"]["hours"].as_u64()
+            .or_else(|| {
+                v["ata_smart_attributes"]["table"].as_array()?
+                    .iter()
+                    .find(|attr| attr["id"].as_u64() == Some(9))
+                    .and_then(|attr| attr["raw"]["value"].as_u64())
+            })
+            .unwrap_or(100);
+
+        let power_on_formatted = Self::format_power_on_hours(power_on_hours);
+        let power_cycle_count = v["power_cycle_count"].as_u64()
+            .or_else(|| {
+                v["ata_smart_attributes"]["table"].as_array()?
+                    .iter()
+                    .find(|attr| attr["id"].as_u64() == Some(12))
+                    .and_then(|attr| attr["raw"]["value"].as_u64())
+            })
+            .unwrap_or(0);
+
+        let temp = v["temperature"]["current"].as_f64()
+            .or_else(|| {
+                v["ata_smart_attributes"]["table"].as_array()?
+                    .iter()
+                    .find(|attr| attr["id"].as_u64() == Some(194) || attr["id"].as_u64() == Some(190))
+                    .and_then(|attr| attr["raw"]["value"].as_f64())
+            })
+            .unwrap_or(33.0) as f32;
+
+        let bad_sectors = v["ata_smart_attributes"]["table"].as_array()
+            .and_then(|table| {
+                table.iter()
+                    .find(|attr| attr["id"].as_u64() == Some(5))
+                    .and_then(|attr| attr["raw"]["value"].as_u64())
+            })
+            .unwrap_or(0);
+
+        // TBW calculation: Total LBAs written (ID 241) or NVMe data_units_written
+        let tbw = if is_nvme {
+            let units = v["nvme_smart_health_information_log"]["data_units_written"].as_f64().unwrap_or(0.0);
+            (units * 1000.0 * 512.0) / (1024.0 * 1024.0 * 1024.0 * 1024.0)
+        } else {
+            let lbas = v["ata_smart_attributes"]["table"].as_array()
+                .and_then(|table| {
+                    table.iter()
+                        .find(|attr| attr["id"].as_u64() == Some(241))
+                        .and_then(|attr| attr["raw"]["value"].as_f64())
+                })
+                .unwrap_or(0.0);
+            (lbas * 512.0) / (1024.0 * 1024.0 * 1024.0 * 1024.0)
+        };
+
+        // Health percentage calculation
+        let health_percentage = if is_nvme {
+            let used = v["nvme_smart_health_information_log"]["percentage_used"].as_f64().unwrap_or(0.0) as f32;
+            (100.0 - used).clamp(0.0, 100.0)
+        } else {
+            let attr_health = v["ata_smart_attributes"]["table"].as_array()
+                .and_then(|table| {
+                    table.iter()
+                        .find(|attr| {
+                            let id = attr["id"].as_u64().unwrap_or(0);
+                            id == 231 || id == 233 || id == 169 || id == 177 || id == 202
+                        })
+                        .and_then(|attr| attr["value"].as_f64().or_else(|| attr["raw"]["value"].as_f64()))
+                })
+                .map(|val| val as f32);
+
+            if let Some(h) = attr_health {
+                h.clamp(0.0, 100.0)
+            } else {
+                let rated = Self::estimate_rated_tbw(&model, 1000);
+                let wear = if is_hdd {
+                    (power_on_hours as f32 / 43800.0 * 100.0).clamp(3.0, 99.0)
+                } else {
+                    (tbw as f32 / rated * 100.0).max(power_on_hours as f32 / 87600.0 * 100.0).clamp(2.0, 99.0)
+                };
+                (100.0 - wear).clamp(0.0, 100.0)
+            }
+        };
+
+        let user_capacity_bytes = v["user_capacity"]["bytes"].as_u64().unwrap_or(1000000000000);
+        let size_gb = user_capacity_bytes / 1000000000;
+        let rated_tbw = Self::estimate_rated_tbw(&model, size_gb);
+
+        let current_date = Local::now().naive_local().date();
+        let (eol_date_str, lifetime_years, daily_write_gb, status, recommendation) = Self::calculate_eol_projection(
+            current_date,
+            health_percentage,
+            power_on_hours,
+            tbw,
+            rated_tbw,
+            is_hdd,
+        );
+
+        Some(DiskHealthReport {
+            device_name: dev_name.to_string(),
+            model,
+            serial_number: serial,
+            drive_type,
+            is_hdd,
+            is_nvme,
+            health_percentage,
+            total_bytes_written_tb: tbw,
+            daily_write_gb,
+            rated_tbw,
+            power_on_hours,
+            power_on_formatted,
+            power_cycle_count,
+            temperature_celsius: temp,
+            bad_sectors,
+            estimated_lifetime_years: lifetime_years,
+            estimated_eol_date: eol_date_str,
+            status,
+            recommendation,
+        })
+    }
+
     fn generate_fallback_report(dev_name: &str) -> DiskHealthReport {
         let current_date = Local::now().naive_local().date();
         let eol_date = current_date + chrono::Duration::days(3263);
@@ -470,3 +633,4 @@ impl SsdAnalyzer {
         }
     }
 }
+

@@ -1,14 +1,8 @@
-mod db;
-mod ssd_analyzer;
-mod telemetry;
-mod threshold_engine;
-mod web_server;
-
-use db::DatabaseManager;
 use std::sync::Arc;
-use telemetry::TelemetryCollector;
-use threshold_engine::ThresholdEngine;
-use web_server::{start_server, AppState};
+use system_pulse::db::DatabaseManager;
+use system_pulse::telemetry::TelemetryCollector;
+use system_pulse::threshold_engine::ThresholdEngine;
+use system_pulse::web_server::{start_server, AppState};
 
 #[tokio::main]
 async fn main() {

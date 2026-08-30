@@ -6,10 +6,10 @@
     <title>Matrix1 SystemPulse - Monitoreo Linux & EOL SSD</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/style.css">
 </head>
-<body>
+<body class="theme-split">
     <div class="background-glow"></div>
     
     <div class="app-container">
@@ -40,110 +40,305 @@
                     <span class="status-dot"></span>
                     <span id="sys-status-text">CARGANDO</span>
                 </div>
+                
+                <!-- Theme Switcher Button -->
+                <button id="btn-theme-switch" class="btn btn-theme" title="Alternar entre los 3 diseños visuales">
+                    <span class="btn-icon">🎨</span>
+                    <span id="lbl-current-theme">Diseño: Modular Split</span>
+                </button>
             </div>
         </header>
 
-        <!-- Main Dashboard Grid -->
+        <!-- Bento High-Density Top Strip (Active in Theme 2) -->
+        <div class="bento-top-strip glass-panel">
+            <div class="bento-metric-item">
+                <div class="bento-metric-header">
+                    <span>🧠 CPU USAGE</span>
+                    <span id="bento-cpu-val" class="mono-val">0%</span>
+                </div>
+                <div class="progress-bar-bg-sm">
+                    <div id="bento-cpu-bar" class="progress-bar-fill cpu-fill" style="width: 0%;"></div>
+                </div>
+            </div>
+            <div class="bento-metric-item">
+                <div class="bento-metric-header">
+                    <span>💾 RAM USAGE</span>
+                    <span id="bento-ram-val" class="mono-val">0 / 0 MB (0%)</span>
+                </div>
+                <div class="progress-bar-bg-sm">
+                    <div id="bento-ram-bar" class="progress-bar-fill ram-fill" style="width: 0%;"></div>
+                </div>
+            </div>
+            <div class="bento-metric-item">
+                <div class="bento-metric-header">
+                    <span>🔄 SWAP USAGE</span>
+                    <span id="bento-swap-val" class="mono-val">0 / 0 MB (0%)</span>
+                </div>
+                <div class="progress-bar-bg-sm">
+                    <div id="bento-swap-bar" class="progress-bar-fill swap-fill" style="width: 0%;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Resources Grid (CPU & RAM Cards with Co-located Top 5) -->
         <main class="dashboard-grid">
-            <!-- CPU Gauge Card -->
-            <section class="card glass-panel">
+            <!-- CPU Card with Integrated Top 5 CPU -->
+            <section class="card glass-panel resource-split-card cpu-card">
                 <div class="card-header">
-                    <h2>🧠 Consumo de CPU</h2>
-                    <span id="cpu-count-label" class="badge">-- Cores</span>
-                </div>
-                <div class="gauge-wrapper">
-                    <svg class="gauge-svg" viewBox="0 0 160 160">
-                        <circle class="gauge-bg" cx="80" cy="80" r="65"></circle>
-                        <circle id="cpu-gauge-circle" class="gauge-progress cpu-progress" cx="80" cy="80" r="65" stroke-dasharray="408" stroke-dashoffset="408"></circle>
-                    </svg>
-                    <div class="gauge-center">
-                        <span id="cpu-pct" class="gauge-value">0%</span>
-                        <span class="gauge-label">USO TOTAL</span>
+                    <div class="header-title-box">
+                        <h2>🧠 CPU & Procesos</h2>
+                        <span id="cpu-count-label" class="badge">-- Cores</span>
                     </div>
+                    <span class="badge badge-accent">🔥 Top 5 CPU</span>
                 </div>
-                <div id="cpu-cores-grid" class="cores-mini-grid">
-                    <!-- Core bars injected dynamically -->
+
+                <div class="split-card-body">
+                    <!-- Left: Micro-Gauge (Theme 1 & 2) vs Large Cyber-Arc (Theme 3) -->
+                    <div class="split-metrics-column">
+                        <!-- Standard Micro Gauge (Themes 1 & 2) -->
+                        <div class="gauge-compact-wrapper standard-gauge-box">
+                            <svg class="gauge-svg" viewBox="0 0 100 100">
+                                <circle class="gauge-bg" cx="50" cy="50" r="38" stroke-width="8"></circle>
+                                <circle id="cpu-gauge-circle" class="gauge-progress cpu-progress" cx="50" cy="50" r="38" stroke-width="8" stroke-dasharray="238.76" stroke-dashoffset="238.76"></circle>
+                            </svg>
+                            <div class="gauge-center">
+                                <span id="cpu-pct" class="gauge-value">0%</span>
+                                <span class="gauge-label">CPU</span>
+                            </div>
+                        </div>
+
+                        <!-- Cyber-HUD CPU Arc (Theme 3) -->
+                        <div class="cyber-large-hud-gauge cyber-cpu-hud">
+                            <div class="cyber-hud-label-top">
+                                <span class="cyber-hud-title">CPU USAGE</span>
+                                <span id="cyber-cpu-top-val" class="cyber-hud-sub">0% USED / -- Cores</span>
+                            </div>
+                            <div class="cyber-svg-container">
+                                <svg class="cyber-gauge-svg" viewBox="0 0 240 240">
+                                    <defs>
+                                        <linearGradient id="cyber-cpu-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                            <stop offset="0%" stop-color="#00F2FE" />
+                                            <stop offset="100%" stop-color="#4FACFE" />
+                                        </linearGradient>
+                                        <filter id="glow-cyan" x="-20%" y="-20%" width="140%" height="140%">
+                                            <feGaussianBlur stdDeviation="4" result="blur" />
+                                            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                                        </filter>
+                                    </defs>
+                                    <!-- Tick Rings -->
+                                    <circle class="cyber-ticks" cx="120" cy="120" r="92" stroke="rgba(0, 242, 254, 0.15)" stroke-width="1.5" stroke-dasharray="2 6" fill="none"></circle>
+                                    <!-- Background Track -->
+                                    <circle class="cyber-track" cx="120" cy="120" r="80" stroke="rgba(255, 255, 255, 0.05)" stroke-width="14" fill="none"></circle>
+                                    <!-- Progress Arc -->
+                                    <circle id="cyber-cpu-arc" class="cyber-arc-cpu" cx="120" cy="120" r="80" stroke="url(#cyber-cpu-grad)" stroke-width="14" stroke-linecap="round" fill="none" stroke-dasharray="502.65" stroke-dashoffset="502.65" filter="url(#glow-cyan)"></circle>
+                                </svg>
+                                <div class="cyber-hud-center">
+                                    <span id="cyber-cpu-center-val" class="cyber-val-big">0%</span>
+                                    <span class="cyber-val-sub">LOAD AVG</span>
+                                    <span id="cyber-cpu-load-val" class="cyber-mono-accent">0.00</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="cpu-cores-grid" class="cores-mini-grid">
+                            <!-- Injected dynamically -->
+                        </div>
+                    </div>
+
+                    <!-- Right: Standard Table (Theme 1 & 2) vs Cyber Process HUD (Theme 3) -->
+                    <div class="split-table-column">
+                        <!-- Standard Table View -->
+                        <div class="standard-table-view">
+                            <table class="compact-data-table">
+                                <thead>
+                                    <tr>
+                                        <th>PID</th>
+                                        <th>PROCESO</th>
+                                        <th>CPU %</th>
+                                        <th>MEM</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="top-cpu-tbody">
+                                    <!-- Injected dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Cyber-HUD Process Card View -->
+                        <div class="cyber-hud-proc-view">
+                            <div class="cyber-proc-card-header cyan-bar">
+                                <span>TOP 5 CPU PROCESSES</span>
+                                <span class="cyber-proc-badge">LIVE</span>
+                            </div>
+                            <div id="cyber-top-cpu-list" class="cyber-proc-list">
+                                <!-- Injected dynamically -->
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </section>
 
-            <!-- Memory Gauge Card -->
-            <section class="card glass-panel">
+            <!-- RAM & Swap Card with Integrated Top 5 RAM -->
+            <section class="card glass-panel resource-split-card ram-card">
                 <div class="card-header">
-                    <h2>💾 Memoria RAM & Swap</h2>
-                    <span id="ram-mb-label" class="badge">0 / 0 MB</span>
-                </div>
-                <div class="gauge-wrapper">
-                    <svg class="gauge-svg" viewBox="0 0 160 160">
-                        <circle class="gauge-bg" cx="80" cy="80" r="65"></circle>
-                        <circle id="ram-gauge-circle" class="gauge-progress ram-progress" cx="80" cy="80" r="65" stroke-dasharray="408" stroke-dashoffset="408"></circle>
-                    </svg>
-                    <div class="gauge-center">
-                        <span id="ram-pct" class="gauge-value">0%</span>
-                        <span class="gauge-label">RAM USADA</span>
+                    <div class="header-title-box">
+                        <h2>💾 RAM & Swap</h2>
+                        <span id="ram-mb-label" class="badge">0 / 0 MB</span>
                     </div>
+                    <span class="badge badge-accent">📊 Top 5 Memoria</span>
                 </div>
-                <div class="swap-bar-container">
-                    <div class="swap-header">
-                        <span>SWAP</span>
-                        <span id="swap-val-label">0 MB</span>
+
+                <div class="split-card-body">
+                    <!-- Left: Micro-Gauge (Theme 1 & 2) vs Concentric Cyber Dual Arc (Theme 3) -->
+                    <div class="split-metrics-column">
+                        <!-- Standard Micro Gauge (Themes 1 & 2) -->
+                        <div class="gauge-compact-wrapper standard-gauge-box">
+                            <svg class="gauge-svg" viewBox="0 0 100 100">
+                                <circle class="gauge-bg" cx="50" cy="50" r="38" stroke-width="8"></circle>
+                                <circle id="ram-gauge-circle" class="gauge-progress ram-progress" cx="50" cy="50" r="38" stroke-width="8" stroke-dasharray="238.76" stroke-dashoffset="238.76"></circle>
+                            </svg>
+                            <div class="gauge-center">
+                                <span id="ram-pct" class="gauge-value">0%</span>
+                                <span class="gauge-label">RAM</span>
+                            </div>
+                        </div>
+
+                        <!-- Concentric Cyber-HUD Dual Arc Gauge (Theme 3 - Exactly matching concept art) -->
+                        <div class="cyber-large-hud-gauge cyber-ram-hud">
+                            <div class="cyber-hud-label-top">
+                                <span class="cyber-hud-title ram-title">RAM USAGE</span>
+                                <span id="cyber-ram-top-val" class="cyber-hud-sub">0% USED / 0 GB Total</span>
+                            </div>
+                            <div class="cyber-svg-container">
+                                <svg class="cyber-gauge-svg" viewBox="0 0 260 260">
+                                    <defs>
+                                        <linearGradient id="cyber-ram-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                            <stop offset="0%" stop-color="#C084FC" />
+                                            <stop offset="50%" stop-color="#A855F7" />
+                                            <stop offset="100%" stop-color="#EC4899" />
+                                        </linearGradient>
+                                        <linearGradient id="cyber-swap-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                            <stop offset="0%" stop-color="#00F2FE" />
+                                            <stop offset="100%" stop-color="#38BDF8" />
+                                        </linearGradient>
+                                        <filter id="glow-purple" x="-20%" y="-20%" width="140%" height="140%">
+                                            <feGaussianBlur stdDeviation="5" result="blur" />
+                                            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                                        </filter>
+                                        <filter id="glow-cyan-sm" x="-20%" y="-20%" width="140%" height="140%">
+                                            <feGaussianBlur stdDeviation="4" result="blur" />
+                                            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                                        </filter>
+                                    </defs>
+                                    <!-- Tick Rings -->
+                                    <circle class="cyber-ticks" cx="130" cy="130" r="114" stroke="rgba(192, 132, 252, 0.2)" stroke-width="1.5" stroke-dasharray="2 6" fill="none"></circle>
+                                    <circle class="cyber-ticks" cx="130" cy="130" r="82" stroke="rgba(0, 242, 254, 0.2)" stroke-width="1.5" stroke-dasharray="2 6" fill="none"></circle>
+                                    <!-- Outer Track: RAM -->
+                                    <circle class="cyber-track" cx="130" cy="130" r="98" stroke="rgba(255, 255, 255, 0.04)" stroke-width="13" fill="none"></circle>
+                                    <!-- Outer Arc: RAM -->
+                                    <circle id="cyber-ram-arc" class="cyber-arc-ram" cx="130" cy="130" r="98" stroke="url(#cyber-ram-grad)" stroke-width="13" stroke-linecap="round" fill="none" stroke-dasharray="615.75" stroke-dashoffset="615.75" filter="url(#glow-purple)"></circle>
+                                    <!-- Inner Track: Swap -->
+                                    <circle class="cyber-track" cx="130" cy="130" r="68" stroke="rgba(255, 255, 255, 0.04)" stroke-width="10" fill="none"></circle>
+                                    <!-- Inner Arc: Swap -->
+                                    <circle id="cyber-swap-arc" class="cyber-arc-swap" cx="130" cy="130" r="68" stroke="url(#cyber-swap-grad)" stroke-width="10" stroke-linecap="round" fill="none" stroke-dasharray="427.26" stroke-dashoffset="427.26" filter="url(#glow-cyan-sm)"></circle>
+                                </svg>
+                                <div class="cyber-hud-center">
+                                    <span id="cyber-ram-center-gb" class="cyber-val-ram-gb">0.0 GB</span>
+                                    <div class="cyber-center-divider"></div>
+                                    <span id="cyber-swap-center-gb" class="cyber-val-swap-gb">0.0 GB</span>
+                                </div>
+                            </div>
+                            <div class="cyber-hud-label-bottom">
+                                <span class="cyber-hud-title swap-title">SWAP USAGE</span>
+                                <span id="cyber-swap-bottom-val" class="cyber-hud-sub">0% USED / 0 GB Total</span>
+                            </div>
+                        </div>
+
+                        <!-- Swap Progress Bar (Themes 1 & 2) -->
+                        <div class="swap-bar-container standard-swap-box">
+                            <div class="swap-header">
+                                <span>SWAP</span>
+                                <span id="swap-val-label" class="mono-sub">0 MB</span>
+                            </div>
+                            <div class="progress-bar-bg-sm">
+                                <div id="swap-progress-fill" class="progress-bar-fill swap-fill" style="width: 0%;"></div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="progress-bar-bg">
-                        <div id="swap-progress-fill" class="progress-bar-fill swap-fill" style="width: 0%;"></div>
+
+                    <!-- Right: Standard Table (Theme 1 & 2) vs Cyber Process HUD (Theme 3) -->
+                    <div class="split-table-column">
+                        <!-- Standard Table View -->
+                        <div class="standard-table-view">
+                            <table class="compact-data-table">
+                                <thead>
+                                    <tr>
+                                        <th>PID</th>
+                                        <th>PROCESO</th>
+                                        <th>MEMORIA MB</th>
+                                        <th>MEMORIA %</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="top-ram-tbody">
+                                    <!-- Injected dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Cyber-HUD Process Card View (Matches concept art) -->
+                        <div class="cyber-hud-proc-view">
+                            <div class="cyber-proc-card-header cyan-bar">
+                                <span>TOP 5 RAM PROCESSES</span>
+                                <span class="cyber-proc-badge">ACTIVE</span>
+                            </div>
+                            <div id="cyber-top-ram-list" class="cyber-proc-list">
+                                <!-- Injected dynamically -->
+                            </div>
+                        </div>
                     </div>
                 </div>
             </section>
-
         </main>
 
-        <!-- Multi-Disk Storage Section -->
+
+        <!-- Top 5 Disk I/O Card -->
+        <section class="card glass-panel full-width-card disk-io-card">
+            <div class="card-header">
+                <div class="header-title-box">
+                    <h2>💽 Top 5 Procesos por E/S de Disco (I/O)</h2>
+                    <span class="badge badge-accent">Lectura & Escritura en Tiempo Real</span>
+                </div>
+                <div class="header-badges">
+                    <span id="disk-read-speed-badge" class="badge">Lectura: 0.0 MB/s</span>
+                    <span id="disk-write-speed-badge" class="badge">Escritura: 0.0 MB/s</span>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="compact-data-table">
+                    <thead>
+                        <tr>
+                            <th>PID</th>
+                            <th>PROCESO</th>
+                            <th>LECTURA</th>
+                            <th>ESCRITURA</th>
+                            <th>TOTAL I/O</th>
+                        </tr>
+                    </thead>
+                    <tbody id="top-disk-tbody">
+                        <!-- Injected dynamically -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Multi-Disk Storage Section & SMART Diagnostics -->
         <section class="card glass-panel full-width-card">
             <div class="card-header">
-                <h2>💽 Almacenamiento & Predicción de Vida Útil (SSD / HDD)</h2>
+                <h2>💽 Almacenamiento Físico & Diagnóstico SMART (SSD / HDD)</h2>
                 <span id="disks-count-badge" class="badge">0 Discos Detectados</span>
             </div>
             <div id="disks-container" class="disks-grid">
                 <!-- Disks injected dynamically -->
-            </div>
-        </section>
-
-        <!-- Top 5 Processes Section -->
-        <section class="grid-two-col">
-            <div class="card glass-panel">
-                <div class="card-header">
-                    <h3>🔥 Top 5 Procesos por CPU</h3>
-                </div>
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>PID</th>
-                            <th>PROCESO</th>
-                            <th>CPU %</th>
-                            <th>MEMORIA</th>
-                        </tr>
-                    </thead>
-                    <tbody id="top-cpu-tbody">
-                        <!-- Injected dynamically -->
-                    </tbody>
-                </table>
-            </div>
-
-            <div class="card glass-panel">
-                <div class="card-header">
-                    <h3>📊 Top 5 Procesos por Memoria</h3>
-                </div>
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>PID</th>
-                            <th>PROCESO</th>
-                            <th>MEMORIA MB</th>
-                            <th>MEMORIA %</th>
-                        </tr>
-                    </thead>
-                    <tbody id="top-ram-tbody">
-                        <!-- Injected dynamically -->
-                    </tbody>
-                </table>
             </div>
         </section>
 
@@ -220,3 +415,4 @@
     <script src="/app.js"></script>
 </body>
 </html>
+

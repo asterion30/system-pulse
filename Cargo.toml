@@ -16,3 +16,15 @@ chrono = { version = "0.4", features = ["serde"] }
 rust-embed = "8.6"
 mime_guess = "2.0"
 tower-http = { version = "0.6", features = ["cors", "fs"] }
+
+[lib]
+name = "system_pulse"
+path = "src/lib.rs"
+
+[[bin]]
+name = "system-pulse"
+path = "src/main.rs"
+
+[[bin]]
+name = "system-cli-pulse"
+path = "src/cli_main.rs"

@@ -1,4 +1,15 @@
+const THEMES = [
+    { id: 'theme-split', label: 'Diseño: Modular Split' },
+    { id: 'theme-bento', label: 'Diseño: Bento Grid' },
+    { id: 'theme-cyber', label: 'Diseño: Cyber-HUD' }
+];
+
+let currentThemeIndex = 0;
+
 document.addEventListener('DOMContentLoaded', () => {
+    // Initialize Theme
+    initTheme();
+
     // Initial fetch
     fetchTelemetry();
     fetchSsdReport();
@@ -10,6 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(fetchHistory, 5000);
 
     // Event listeners
+    document.getElementById('btn-theme-switch').addEventListener('click', cycleTheme);
     document.getElementById('btn-manual-snapshot').addEventListener('click', saveManualSnapshot);
     document.getElementById('threshold-form').addEventListener('submit', saveThresholds);
 
@@ -24,6 +36,30 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('lbl-ram-thresh').textContent = `${e.target.value}%`;
     });
 });
+
+function initTheme() {
+    const saved = localStorage.getItem('matrix1_theme');
+    if (saved) {
+        const found = THEMES.findIndex(t => t.id === saved);
+        if (found !== -1) currentThemeIndex = found;
+    }
+    applyTheme(THEMES[currentThemeIndex]);
+}
+
+function cycleTheme() {
+    currentThemeIndex = (currentThemeIndex + 1) % THEMES.length;
+    const theme = THEMES[currentThemeIndex];
+    applyTheme(theme);
+    localStorage.setItem('matrix1_theme', theme.id);
+    showToast(`🎨 ${theme.label}`);
+}
+
+function applyTheme(theme) {
+    document.body.className = theme.id;
+    const lbl = document.getElementById('lbl-current-theme');
+    if (lbl) lbl.textContent = theme.label;
+}
+
 
 async function fetchTelemetry() {
     try {
@@ -54,68 +90,172 @@ function renderDisksList(reports) {
     badgeCount.textContent = `${reports.length} Disco(s) Detectado(s)`;
 
     if (reports.length === 0) {
-        container.innerHTML = '<div class="text-center">No se detectaron unidades de almacenamiento.</div>';
+        const emptyDiv = document.createElement('div');
+        emptyDiv.className = 'text-center';
+        emptyDiv.textContent = 'No se detectaron unidades de almacenamiento.';
+        container.replaceChildren(emptyDiv);
         return;
     }
 
-    container.innerHTML = reports.map(disk => {
+    const fragment = document.createDocumentFragment();
+    reports.forEach(disk => {
+        const card = document.createElement('div');
+        card.className = 'disk-card-item';
+
+        // Header
+        const header = document.createElement('div');
+        header.className = 'card-header';
+
+        const headerLeft = document.createElement('div');
+        headerLeft.style.display = 'flex';
+        headerLeft.style.alignItems = 'center';
+        headerLeft.style.gap = '8px';
+
         const typeBadgeClass = disk.is_hdd ? 'badge-hdd' : 'badge-ssd';
-        const statusBadgeClass = disk.status === 'HEALTHY' ? 'badge-success' : 'badge-warning';
         const diskIcon = disk.is_hdd ? '⚙️ HDD' : (disk.is_nvme ? '⚡ NVMe' : '💽 SSD');
-        const tempFahrenheit = (disk.temperature_celsius * 9 / 5) + 32;
+        const typeSpan = document.createElement('span');
+        typeSpan.className = `disk-type-badge ${typeBadgeClass}`;
+        typeSpan.textContent = `${diskIcon} ${disk.drive_type}`;
 
-        return `
-            <div class="disk-card-item">
-                <div class="card-header">
-                    <div style="display:flex; align-items:center; gap:8px;">
-                        <span class="disk-type-badge ${typeBadgeClass}">${diskIcon} ${disk.drive_type}</span>
-                        <span class="mono-sub">/dev/${disk.device_name}</span>
-                    </div>
-                    <span class="badge ${statusBadgeClass}">${disk.status}</span>
-                </div>
+        const devSpan = document.createElement('span');
+        devSpan.className = 'mono-sub';
+        devSpan.textContent = `/dev/${disk.device_name}`;
 
-                <div class="ssd-model-box">
-                    <span class="meta-label">DISCO / MODELO</span>
-                    <h3>${escapeHtml(disk.model)}</h3>
-                    <span class="mono-sub">S/N: ${escapeHtml(disk.serial_number)}</span>
-                </div>
+        headerLeft.appendChild(typeSpan);
+        headerLeft.appendChild(devSpan);
 
-                <div class="eol-display-box">
-                    <div class="eol-left">
-                        <span class="meta-label">PROYECCIÓN FIN DE VIDA (EOL)</span>
-                        <div class="eol-date-highlight">${disk.estimated_eol_date}</div>
-                        <span class="mono-sub" style="color:var(--text-secondary);">Vida útil estimada: ${disk.estimated_lifetime_years.toFixed(1)} Años</span>
-                    </div>
-                    <div class="eol-right">
-                        <span class="health-percentage" style="color: ${disk.health_percentage > 70 ? 'var(--status-success)' : 'var(--status-warning)'};">
-                            ${disk.health_percentage.toFixed(1)}%
-                        </span>
-                        <span class="meta-label">SALUD RESTANTE</span>
-                    </div>
-                </div>
+        const statusBadgeClass = disk.status === 'HEALTHY' ? 'badge-success' : 'badge-warning';
+        const statusSpan = document.createElement('span');
+        statusSpan.className = `badge ${statusBadgeClass}`;
+        statusSpan.textContent = disk.status;
 
-                <div class="ssd-metrics-grid">
-                    <div class="ssd-metric">
-                        <span class="meta-label">TIEMPO ENCENDIDO (SMART)</span>
-                        <span class="mono-val" style="font-size:11px;">${disk.power_on_formatted || (disk.power_on_hours + ' hrs')}</span>
-                    </div>
-                    <div class="ssd-metric">
-                        <span class="meta-label">CICLOS ENCENDIDO</span>
-                        <span class="mono-val">${disk.power_cycle_count > 0 ? disk.power_cycle_count + ' ciclos' : 'N/D'}</span>
-                    </div>
-                    <div class="ssd-metric">
-                        <span class="meta-label">ESCRITURA DIARIA PROM.</span>
-                        <span class="mono-val">${disk.daily_write_gb ? disk.daily_write_gb.toFixed(1) + ' GB/día' : 'N/D'}</span>
-                    </div>
-                </div>
+        header.appendChild(headerLeft);
+        header.appendChild(statusSpan);
 
-                <div class="ssd-recommendation">
-                    <span class="info-icon">💡</span>
-                    <span>${escapeHtml(disk.recommendation)}</span>
-                </div>
-            </div>
-        `;
-    }).join('');
+        // Model Box
+        const modelBox = document.createElement('div');
+        modelBox.className = 'ssd-model-box';
+
+        const modelLabel = document.createElement('span');
+        modelLabel.className = 'meta-label';
+        modelLabel.textContent = 'DISCO / MODELO';
+
+        const modelH3 = document.createElement('h3');
+        modelH3.textContent = disk.model;
+
+        const serialSpan = document.createElement('span');
+        serialSpan.className = 'mono-sub';
+        serialSpan.textContent = `S/N: ${disk.serial_number}`;
+
+        modelBox.appendChild(modelLabel);
+        modelBox.appendChild(modelH3);
+        modelBox.appendChild(serialSpan);
+
+        // EOL Box
+        const eolBox = document.createElement('div');
+        eolBox.className = 'eol-display-box';
+
+        const eolLeft = document.createElement('div');
+        eolLeft.className = 'eol-left';
+
+        const eolLabel = document.createElement('span');
+        eolLabel.className = 'meta-label';
+        eolLabel.textContent = 'PROYECCIÓN FIN DE VIDA (EOL)';
+
+        const eolDate = document.createElement('div');
+        eolDate.className = 'eol-date-highlight';
+        eolDate.textContent = disk.estimated_eol_date;
+
+        const eolLife = document.createElement('span');
+        eolLife.className = 'mono-sub';
+        eolLife.style.color = 'var(--text-secondary)';
+        eolLife.textContent = `Vida útil estimada: ${disk.estimated_lifetime_years.toFixed(1)} Años`;
+
+        eolLeft.appendChild(eolLabel);
+        eolLeft.appendChild(eolDate);
+        eolLeft.appendChild(eolLife);
+
+        const eolRight = document.createElement('div');
+        eolRight.className = 'eol-right';
+
+        const healthPct = document.createElement('span');
+        healthPct.className = 'health-percentage';
+        healthPct.style.color = disk.health_percentage > 70 ? 'var(--status-success)' : 'var(--status-warning)';
+        healthPct.textContent = `${disk.health_percentage.toFixed(1)}%`;
+
+        const healthLabel = document.createElement('span');
+        healthLabel.className = 'meta-label';
+        healthLabel.textContent = 'SALUD RESTANTE';
+
+        eolRight.appendChild(healthPct);
+        eolRight.appendChild(healthLabel);
+
+        eolBox.appendChild(eolLeft);
+        eolBox.appendChild(eolRight);
+
+        // Metrics Grid
+        const metricsGrid = document.createElement('div');
+        metricsGrid.className = 'ssd-metrics-grid';
+
+        const m1 = document.createElement('div');
+        m1.className = 'ssd-metric';
+        const m1Label = document.createElement('span');
+        m1Label.className = 'meta-label';
+        m1Label.textContent = 'TIEMPO ENCENDIDO (SMART)';
+        const m1Val = document.createElement('span');
+        m1Val.className = 'mono-val';
+        m1Val.style.fontSize = '11px';
+        m1Val.textContent = disk.power_on_formatted || (`${disk.power_on_hours} hrs`);
+        m1.appendChild(m1Label);
+        m1.appendChild(m1Val);
+
+        const m2 = document.createElement('div');
+        m2.className = 'ssd-metric';
+        const m2Label = document.createElement('span');
+        m2Label.className = 'meta-label';
+        m2Label.textContent = 'CICLOS ENCENDIDO';
+        const m2Val = document.createElement('span');
+        m2Val.className = 'mono-val';
+        m2Val.textContent = disk.power_cycle_count > 0 ? `${disk.power_cycle_count} ciclos` : 'N/D';
+        m2.appendChild(m2Label);
+        m2.appendChild(m2Val);
+
+        const m3 = document.createElement('div');
+        m3.className = 'ssd-metric';
+        const m3Label = document.createElement('span');
+        m3Label.className = 'meta-label';
+        m3Label.textContent = 'ESCRITURA DIARIA PROM.';
+        const m3Val = document.createElement('span');
+        m3Val.className = 'mono-val';
+        m3Val.textContent = disk.daily_write_gb ? `${disk.daily_write_gb.toFixed(1)} GB/día` : 'N/D';
+        m3.appendChild(m3Label);
+        m3.appendChild(m3Val);
+
+        metricsGrid.appendChild(m1);
+        metricsGrid.appendChild(m2);
+        metricsGrid.appendChild(m3);
+
+        // Recommendation
+        const recBox = document.createElement('div');
+        recBox.className = 'ssd-recommendation';
+        const recIcon = document.createElement('span');
+        recIcon.className = 'info-icon';
+        recIcon.textContent = '💡';
+        const recText = document.createElement('span');
+        recText.textContent = disk.recommendation;
+        recBox.appendChild(recIcon);
+        recBox.appendChild(recText);
+
+        card.appendChild(header);
+        card.appendChild(modelBox);
+        card.appendChild(eolBox);
+        card.appendChild(metricsGrid);
+        card.appendChild(recBox);
+
+        fragment.appendChild(card);
+    });
+
+    container.replaceChildren(fragment);
 }
 
 async function fetchHistory() {
@@ -165,7 +305,7 @@ function updateDashboard(data) {
     if (data.status_level === 'WARNING') statusBadge.classList.add('warning');
     if (data.status_level === 'CRITICAL') statusBadge.classList.add('critical');
 
-    // CPU Gauge
+    // CPU Gauge (Standard)
     const cpuPct = data.cpu_usage_total.toFixed(1);
     document.getElementById('cpu-pct').textContent = `${cpuPct}%`;
     document.getElementById('cpu-count-label').textContent = `${data.cpu_count} Cores`;
@@ -173,68 +313,339 @@ function updateDashboard(data) {
 
     // CPU Mini Cores
     const coresGrid = document.getElementById('cpu-cores-grid');
-    coresGrid.innerHTML = data.cpu_cores.map(c => `
-        <div class="core-item">
-            <span>C${c.core_id}: ${c.usage.toFixed(0)}%</span>
-            <div class="core-bar-bg">
-                <div class="core-bar-fill" style="width: ${c.usage}%"></div>
-            </div>
-        </div>
-    `).join('');
+    const coresFragment = document.createDocumentFragment();
+    data.cpu_cores.forEach(c => {
+        const item = document.createElement('div');
+        item.className = 'core-item';
 
-    // RAM Gauge
+        const label = document.createElement('span');
+        label.textContent = `C${c.core_id}: ${c.usage.toFixed(0)}%`;
+
+        const barBg = document.createElement('div');
+        barBg.className = 'core-bar-bg';
+
+        const barFill = document.createElement('div');
+        barFill.className = 'core-bar-fill';
+        barFill.style.width = `${c.usage}%`;
+
+        barBg.appendChild(barFill);
+        item.appendChild(label);
+        item.appendChild(barBg);
+
+        coresFragment.appendChild(item);
+    });
+    coresGrid.replaceChildren(coresFragment);
+
+    // RAM Gauge (Standard)
     const ramPct = data.memory_percent.toFixed(1);
     document.getElementById('ram-pct').textContent = `${ramPct}%`;
     document.getElementById('ram-mb-label').textContent = `${data.memory_used_mb} / ${data.memory_total_mb} MB`;
     updateGauge('ram-gauge-circle', data.memory_percent);
 
+    // ================= CYBER-HUD THEME 3 GAUGES =================
+    // Cyber CPU HUD Arc
+    const cyberCpuTop = document.getElementById('cyber-cpu-top-val');
+    if (cyberCpuTop) cyberCpuTop.textContent = `${cpuPct}% USED / ${data.cpu_count} Cores`;
+    const cyberCpuCenter = document.getElementById('cyber-cpu-center-val');
+    if (cyberCpuCenter) cyberCpuCenter.textContent = `${cpuPct}%`;
+    const cyberCpuLoad = document.getElementById('cyber-cpu-load-val');
+    if (cyberCpuLoad) cyberCpuLoad.textContent = (data.cpu_usage_total / 100 * data.cpu_count).toFixed(2);
+    updateGauge('cyber-cpu-arc', data.cpu_usage_total);
+
+    // Cyber RAM/SWAP Concentric Dual Arc (Exactly matching concept art)
+    const ramGbUsed = (data.memory_used_mb / 1024).toFixed(1);
+    const ramGbTotal = (data.memory_total_mb / 1024).toFixed(0);
+    const swapGbUsed = (data.swap_used_mb / 1024).toFixed(1);
+    const swapGbTotal = (data.swap_total_mb / 1024).toFixed(0);
+
+    const cyberRamTop = document.getElementById('cyber-ram-top-val');
+    if (cyberRamTop) cyberRamTop.textContent = `${ramPct}% USED / ${ramGbTotal}GB Total`;
+
+    const cyberRamCenterGb = document.getElementById('cyber-ram-center-gb');
+    if (cyberRamCenterGb) cyberRamCenterGb.textContent = `${ramGbUsed} GB`;
+
+    const cyberSwapCenterGb = document.getElementById('cyber-swap-center-gb');
+    if (cyberSwapCenterGb) cyberSwapCenterGb.textContent = `${swapGbUsed} GB`;
+
+    const cyberSwapBottom = document.getElementById('cyber-swap-bottom-val');
+    if (cyberSwapBottom) cyberSwapBottom.textContent = `${data.swap_percent.toFixed(0)}% USED / ${swapGbTotal}GB Total`;
+
+    updateGauge('cyber-ram-arc', data.memory_percent);
+    updateGauge('cyber-swap-arc', data.swap_percent);
+
+    // Bento Strip Metrics (Theme 2)
+    const bentoCpuVal = document.getElementById('bento-cpu-val');
+    if (bentoCpuVal) bentoCpuVal.textContent = `${cpuPct}%`;
+    const bentoCpuBar = document.getElementById('bento-cpu-bar');
+    if (bentoCpuBar) bentoCpuBar.style.width = `${data.cpu_usage_total}%`;
+
+    const bentoRamVal = document.getElementById('bento-ram-val');
+    if (bentoRamVal) bentoRamVal.textContent = `${data.memory_used_mb} / ${data.memory_total_mb} MB (${ramPct}%)`;
+    const bentoRamBar = document.getElementById('bento-ram-bar');
+    if (bentoRamBar) bentoRamBar.style.width = `${data.memory_percent}%`;
+
+    const bentoSwapVal = document.getElementById('bento-swap-val');
+    if (bentoSwapVal) bentoSwapVal.textContent = `${data.swap_used_mb} / ${data.swap_total_mb} MB (${data.swap_percent.toFixed(1)}%)`;
+    const bentoSwapBar = document.getElementById('bento-swap-bar');
+    if (bentoSwapBar) bentoSwapBar.style.width = `${data.swap_percent}%`;
+
     // Swap Bar
     document.getElementById('swap-val-label').textContent = `${data.swap_used_mb} / ${data.swap_total_mb} MB`;
     document.getElementById('swap-progress-fill').style.width = `${data.swap_percent}%`;
 
-    // Top CPU Processes Table
-    const topCpuTbody = document.getElementById('top-cpu-tbody');
-    topCpuTbody.innerHTML = data.top_cpu_processes.map(p => `
-        <tr>
-            <td>${p.pid}</td>
-            <td style="color: var(--accent-cyan);">${escapeHtml(p.name)}</td>
-            <td style="font-weight:700;">${p.cpu_usage.toFixed(1)}%</td>
-            <td>${p.memory_mb} MB</td>
-        </tr>
-    `).join('');
+    // Disk Throughput Badges
+    const readSpeedBadge = document.getElementById('disk-read-speed-badge');
+    if (readSpeedBadge && data.total_disk_read_speed_mb !== undefined) {
+        readSpeedBadge.textContent = `Lectura: ${data.total_disk_read_speed_mb.toFixed(1)} MB/s`;
+    }
+    const writeSpeedBadge = document.getElementById('disk-write-speed-badge');
+    if (writeSpeedBadge && data.total_disk_write_speed_mb !== undefined) {
+        writeSpeedBadge.textContent = `Escritura: ${data.total_disk_write_speed_mb.toFixed(1)} MB/s`;
+    }
 
-    // Top Memory Processes Table
+    // ================= TOP CPU PROCESSES =================
+    // Standard Table
+    const topCpuTbody = document.getElementById('top-cpu-tbody');
+    const cpuFrag = document.createDocumentFragment();
+    data.top_cpu_processes.forEach(p => {
+        const tr = document.createElement('tr');
+        const tdPid = document.createElement('td');
+        tdPid.textContent = p.pid;
+        const tdName = document.createElement('td');
+        tdName.style.color = 'var(--accent-cyan)';
+        tdName.textContent = p.name;
+        const tdCpu = document.createElement('td');
+        tdCpu.style.fontWeight = '700';
+        tdCpu.textContent = `${p.cpu_usage.toFixed(1)}%`;
+        const tdMem = document.createElement('td');
+        tdMem.textContent = `${p.memory_mb} MB`;
+
+        tr.appendChild(tdPid);
+        tr.appendChild(tdName);
+        tr.appendChild(tdCpu);
+        tr.appendChild(tdMem);
+        cpuFrag.appendChild(tr);
+    });
+    topCpuTbody.replaceChildren(cpuFrag);
+
+    // Cyber HUD CPU Process List (Theme 3)
+    const cyberCpuList = document.getElementById('cyber-top-cpu-list');
+    if (cyberCpuList) {
+        const cyberCpuFrag = document.createDocumentFragment();
+        data.top_cpu_processes.forEach((p, idx) => {
+            const item = document.createElement('div');
+            item.className = 'cyber-proc-item';
+
+            const row = document.createElement('div');
+            row.className = 'cyber-proc-row';
+
+            const left = document.createElement('div');
+            left.className = 'cyber-proc-left';
+            left.innerHTML = `<span class="cyber-proc-idx">${idx + 1}.</span><span class="cyber-proc-name">${p.name}</span>`;
+
+            const right = document.createElement('div');
+            right.className = 'cyber-proc-right';
+            const memPill = p.memory_mb >= 1024 ? `${(p.memory_mb/1024).toFixed(1)} GB` : `${p.memory_mb} MB`;
+            right.innerHTML = `<span class="cyber-pill cyber-pill-cyan">${memPill}</span><span class="cyber-proc-pct">${p.cpu_usage.toFixed(1)}%</span>`;
+
+            row.appendChild(left);
+            row.appendChild(right);
+
+            const barBg = document.createElement('div');
+            barBg.className = 'cyber-proc-bar-bg';
+            const barFill = document.createElement('div');
+            barFill.className = 'cyber-proc-bar-fill cyan-fill';
+            barFill.style.width = `${Math.min(p.cpu_usage, 100)}%`;
+            barBg.appendChild(barFill);
+
+            item.appendChild(row);
+            item.appendChild(barBg);
+            cyberCpuFrag.appendChild(item);
+        });
+        cyberCpuList.replaceChildren(cyberCpuFrag);
+    }
+
+    // ================= TOP MEMORY PROCESSES =================
+    // Standard Table
     const topRamTbody = document.getElementById('top-ram-tbody');
-    topRamTbody.innerHTML = data.top_memory_processes.map(p => `
-        <tr>
-            <td>${p.pid}</td>
-            <td style="color: var(--accent-purple);">${escapeHtml(p.name)}</td>
-            <td style="font-weight:700;">${p.memory_mb} MB</td>
-            <td>${p.memory_percent.toFixed(1)}%</td>
-        </tr>
-    `).join('');
+    const ramFrag = document.createDocumentFragment();
+    data.top_memory_processes.forEach(p => {
+        const tr = document.createElement('tr');
+        const tdPid = document.createElement('td');
+        tdPid.textContent = p.pid;
+        const tdName = document.createElement('td');
+        tdName.style.color = 'var(--accent-purple)';
+        tdName.textContent = p.name;
+        const tdMem = document.createElement('td');
+        tdMem.style.fontWeight = '700';
+        tdMem.textContent = `${p.memory_mb} MB`;
+        const tdPct = document.createElement('td');
+        tdPct.textContent = `${p.memory_percent.toFixed(1)}%`;
+
+        tr.appendChild(tdPid);
+        tr.appendChild(tdName);
+        tr.appendChild(tdMem);
+        tr.appendChild(tdPct);
+        ramFrag.appendChild(tr);
+    });
+    topRamTbody.replaceChildren(ramFrag);
+
+    // Cyber HUD RAM Process List (Theme 3 - Matches Concept Art)
+    const cyberRamList = document.getElementById('cyber-top-ram-list');
+    if (cyberRamList) {
+        const cyberRamFrag = document.createDocumentFragment();
+        data.top_memory_processes.forEach((p, idx) => {
+            const item = document.createElement('div');
+            item.className = 'cyber-proc-item';
+
+            const row = document.createElement('div');
+            row.className = 'cyber-proc-row';
+
+            const left = document.createElement('div');
+            left.className = 'cyber-proc-left';
+            left.innerHTML = `<span class="cyber-proc-idx">${idx + 1}.</span><span class="cyber-proc-name">${p.name}</span>`;
+
+            const right = document.createElement('div');
+            right.className = 'cyber-proc-right';
+            const memPill = p.memory_mb >= 1024 ? `${(p.memory_mb/1024).toFixed(1)} GB` : `${p.memory_mb} MB`;
+            right.innerHTML = `<span class="cyber-pill cyber-pill-purple">${memPill}</span><span class="cyber-proc-pct">${p.memory_percent.toFixed(1)}%</span>`;
+
+            row.appendChild(left);
+            row.appendChild(right);
+
+            const barBg = document.createElement('div');
+            barBg.className = 'cyber-proc-bar-bg';
+            const barFill = document.createElement('div');
+            barFill.className = 'cyber-proc-bar-fill purple-fill';
+            barFill.style.width = `${Math.min(p.memory_percent, 100)}%`;
+            barBg.appendChild(barFill);
+
+            item.appendChild(row);
+            item.appendChild(barBg);
+            cyberRamFrag.appendChild(item);
+        });
+        cyberRamList.replaceChildren(cyberRamFrag);
+    }
+
+    // Top Disk I/O Processes Table
+    const topDiskTbody = document.getElementById('top-disk-tbody');
+    if (topDiskTbody && data.top_disk_processes) {
+        const diskFrag = document.createDocumentFragment();
+        data.top_disk_processes.forEach(p => {
+            const tr = document.createElement('tr');
+
+            const tdPid = document.createElement('td');
+            tdPid.textContent = p.pid;
+
+            const tdName = document.createElement('td');
+            tdName.style.color = 'var(--accent-blue)';
+            tdName.textContent = p.name;
+
+            const tdRead = document.createElement('td');
+            tdRead.style.fontWeight = '600';
+            tdRead.textContent = formatBytesRate(p.disk_read_bytes);
+
+            const tdWrite = document.createElement('td');
+            tdWrite.style.fontWeight = '600';
+            tdWrite.textContent = formatBytesRate(p.disk_written_bytes);
+
+            const tdTotal = document.createElement('td');
+            tdTotal.textContent = formatBytes(p.disk_total_read_bytes + p.disk_total_written_bytes);
+
+            tr.appendChild(tdPid);
+            tr.appendChild(tdName);
+            tr.appendChild(tdRead);
+            tr.appendChild(tdWrite);
+            tr.appendChild(tdTotal);
+
+            diskFrag.appendChild(tr);
+        });
+        topDiskTbody.replaceChildren(diskFrag);
+    }
 }
 
+function formatBytesRate(bytes) {
+    if (!bytes || bytes === 0) return '0 B/s';
+    if (bytes >= 1024 * 1024 * 1024) {
+        return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB/s';
+    } else if (bytes >= 1024 * 1024) {
+        return (bytes / (1024 * 1024)).toFixed(1) + ' MB/s';
+    } else if (bytes >= 1024) {
+        return (bytes / 1024).toFixed(1) + ' KB/s';
+    } else {
+        return bytes + ' B/s';
+    }
+}
 
+function formatBytes(bytes) {
+    if (!bytes || bytes === 0) return '0 B';
+    if (bytes >= 1024 * 1024 * 1024) {
+        return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
+    } else if (bytes >= 1024 * 1024) {
+        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    } else if (bytes >= 1024) {
+        return (bytes / 1024).toFixed(1) + ' KB';
+    } else {
+        return bytes + ' B';
+    }
+}
 
 function updateHistoryTable(list) {
     const historyTbody = document.getElementById('history-tbody');
     if (list.length === 0) {
-        historyTbody.innerHTML = '<tr><td colspan="7" class="text-center">No hay instantáneas guardadas aún.</td></tr>';
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 7;
+        td.className = 'text-center';
+        td.textContent = 'No hay instantáneas guardadas aún.';
+        tr.appendChild(td);
+        historyTbody.replaceChildren(tr);
         return;
     }
 
-    historyTbody.innerHTML = list.map(item => `
-        <tr>
-            <td>#${item.id}</td>
-            <td>${item.timestamp}</td>
-            <td><span class="badge" style="color:var(--accent-cyan);">${escapeHtml(item.trigger_type)}</span></td>
-            <td>${item.cpu_usage.toFixed(1)}%</td>
-            <td>${item.memory_percent.toFixed(1)}%</td>
-            <td>${escapeHtml(item.top_process_name)}</td>
-            <td><span class="badge">${item.status_level}</span></td>
-        </tr>
-    `).join('');
+    const fragment = document.createDocumentFragment();
+    list.forEach(item => {
+        const tr = document.createElement('tr');
+
+        const tdId = document.createElement('td');
+        tdId.textContent = `#${item.id}`;
+
+        const tdTime = document.createElement('td');
+        tdTime.textContent = item.timestamp;
+
+        const tdTrigger = document.createElement('td');
+        const badgeTrigger = document.createElement('span');
+        badgeTrigger.className = 'badge';
+        badgeTrigger.style.color = 'var(--accent-cyan)';
+        badgeTrigger.textContent = item.trigger_type;
+        tdTrigger.appendChild(badgeTrigger);
+
+        const tdCpu = document.createElement('td');
+        tdCpu.textContent = `${item.cpu_usage.toFixed(1)}%`;
+
+        const tdRam = document.createElement('td');
+        tdRam.textContent = `${item.memory_percent.toFixed(1)}%`;
+
+        const tdProc = document.createElement('td');
+        tdProc.textContent = item.top_process_name;
+
+        const tdStatus = document.createElement('td');
+        const badgeStatus = document.createElement('span');
+        badgeStatus.className = 'badge';
+        badgeStatus.textContent = item.status_level;
+        tdStatus.appendChild(badgeStatus);
+
+        tr.appendChild(tdId);
+        tr.appendChild(tdTime);
+        tr.appendChild(tdTrigger);
+        tr.appendChild(tdCpu);
+        tr.appendChild(tdRam);
+        tr.appendChild(tdProc);
+        tr.appendChild(tdStatus);
+
+        fragment.appendChild(tr);
+    });
+    historyTbody.replaceChildren(fragment);
 }
 
 function updateGauge(elementId, percentage) {
@@ -294,10 +705,4 @@ function showToast(msg) {
     setTimeout(() => {
         toast.classList.add('hidden');
     }, 3000);
-}
-
-function escapeHtml(str) {
-    return str.replace(/[&<>"']/g, m => ({
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
-    })[m]);
 }

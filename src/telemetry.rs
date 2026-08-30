@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
-use sysinfo::{CpuRefreshKind, Disks, MemoryRefreshKind, ProcessesToUpdate, RefreshKind, System};
+use sysinfo::{CpuRefreshKind, Disks, MemoryRefreshKind, ProcessRefreshKind, ProcessesToUpdate, RefreshKind, System};
+use std::collections::HashMap;
+use std::fs;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -10,6 +12,10 @@ pub struct ProcessInfo {
     pub cpu_usage: f32,
     pub memory_mb: u64,
     pub memory_percent: f32,
+    pub disk_read_bytes: u64,
+    pub disk_written_bytes: u64,
+    pub disk_total_read_bytes: u64,
+    pub disk_total_written_bytes: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -55,14 +61,20 @@ pub struct SystemMetrics {
 
     pub top_cpu_processes: Vec<ProcessInfo>,
     pub top_memory_processes: Vec<ProcessInfo>,
+    pub top_disk_processes: Vec<ProcessInfo>,
 
     pub status_level: String, // "NORMAL", "WARNING", "CRITICAL"
+}
+
+struct DiskSample {
+    time: Instant,
+    stats: HashMap<String, (u64, u64)>, // device_name -> (read_bytes, written_bytes)
 }
 
 pub struct TelemetryCollector {
     sys: Arc<Mutex<System>>,
     disks: Arc<Mutex<Disks>>,
-    _last_disk_sample_time: Arc<Mutex<Instant>>,
+    last_disk_sample: Arc<Mutex<Option<DiskSample>>>,
 }
 
 impl TelemetryCollector {
@@ -70,17 +82,47 @@ impl TelemetryCollector {
         let mut sys = System::new_with_specifics(
             RefreshKind::nothing()
                 .with_cpu(CpuRefreshKind::everything())
-                .with_memory(MemoryRefreshKind::everything()),
+                .with_memory(MemoryRefreshKind::everything())
+                .with_processes(ProcessRefreshKind::everything()),
         );
         sys.refresh_all();
 
         let disks = Disks::new_with_refreshed_list();
+        let initial_stats = Self::read_diskstats();
 
         Self {
             sys: Arc::new(Mutex::new(sys)),
             disks: Arc::new(Mutex::new(disks)),
-            _last_disk_sample_time: Arc::new(Mutex::new(Instant::now())),
+            last_disk_sample: Arc::new(Mutex::new(Some(DiskSample {
+                time: Instant::now(),
+                stats: initial_stats,
+            }))),
         }
+    }
+
+    fn read_diskstats() -> HashMap<String, (u64, u64)> {
+        let mut map = HashMap::new();
+        if let Ok(content) = fs::read_to_string("/proc/diskstats") {
+            for line in content.lines() {
+                let fields: Vec<&str> = line.split_whitespace().collect();
+                if fields.len() >= 10 {
+                    let devname = fields[2].to_string();
+                    if (devname.starts_with("sd") && devname.len() == 3)
+                        || (devname.starts_with("vd") && devname.len() == 3)
+                        || (devname.starts_with("nvme") && !devname.contains('p'))
+                        || (devname.starts_with("hd") && devname.len() == 3)
+                        || (devname.starts_with("mmcblk") && !devname.contains('p'))
+                    {
+                        let sectors_read: u64 = fields[5].parse().unwrap_or(0);
+                        let sectors_written: u64 = fields[9].parse().unwrap_or(0);
+                        let read_bytes = sectors_read.saturating_mul(512);
+                        let written_bytes = sectors_written.saturating_mul(512);
+                        map.insert(devname, (read_bytes, written_bytes));
+                    }
+                }
+            }
+        }
+        map
     }
 
     pub fn collect(&self) -> SystemMetrics {
@@ -138,6 +180,35 @@ impl TelemetryCollector {
             0.0
         };
 
+        // Disk Throughput calculation
+        let now_instant = Instant::now();
+        let current_diskstats = Self::read_diskstats();
+        let mut last_sample_lock = self.last_disk_sample.lock().unwrap();
+
+        let mut dev_rates: HashMap<String, (u64, u64)> = HashMap::new(); // dev -> (read_Bps, write_Bps)
+        let mut total_read_bps: u64 = 0;
+        let mut total_write_bps: u64 = 0;
+
+        if let Some(prev) = last_sample_lock.as_ref() {
+            let elapsed_secs = now_instant.duration_since(prev.time).as_secs_f64().max(0.1);
+            for (dev, (curr_r, curr_w)) in &current_diskstats {
+                if let Some((prev_r, prev_w)) = prev.stats.get(dev) {
+                    let r_diff = curr_r.saturating_sub(*prev_r);
+                    let w_diff = curr_w.saturating_sub(*prev_w);
+                    let r_rate = (r_diff as f64 / elapsed_secs) as u64;
+                    let w_rate = (w_diff as f64 / elapsed_secs) as u64;
+                    dev_rates.insert(dev.clone(), (r_rate, w_rate));
+                    total_read_bps += r_rate;
+                    total_write_bps += w_rate;
+                }
+            }
+        }
+
+        *last_sample_lock = Some(DiskSample {
+            time: now_instant,
+            stats: current_diskstats,
+        });
+
         // Disks Metrics
         let mut disk_list = Vec::new();
         for disk in disks_lock.iter() {
@@ -150,20 +221,32 @@ impl TelemetryCollector {
                 0.0
             };
 
+            let name_str = disk.name().to_string_lossy().to_string();
+            // Find rates matching device name (e.g. sda, nvme0n1)
+            let mut r_rate = 0;
+            let mut w_rate = 0;
+            for (dev, (r, w)) in &dev_rates {
+                if name_str.contains(dev) || dev.contains(&name_str) {
+                    r_rate = *r;
+                    w_rate = *w;
+                    break;
+                }
+            }
+
             disk_list.push(DiskUsageInfo {
-                name: disk.name().to_string_lossy().to_string(),
+                name: name_str,
                 mount_point: disk.mount_point().to_string_lossy().to_string(),
                 total_bytes: total,
                 used_bytes: used,
                 free_bytes: free,
                 usage_percent: percent,
-                read_bytes_per_sec: 0,
-                write_bytes_per_sec: 0,
+                read_bytes_per_sec: r_rate,
+                write_bytes_per_sec: w_rate,
             });
         }
 
-        // Top Processes
-        let mut all_procs: Vec<ProcessInfo> = sys
+        // Processes (with CPU, RAM, Disk I/O)
+        let all_procs: Vec<ProcessInfo> = sys
             .processes()
             .iter()
             .map(|(pid, proc)| {
@@ -174,15 +257,32 @@ impl TelemetryCollector {
                     0.0
                 };
 
+                let disk_usage = proc.disk_usage();
+
                 ProcessInfo {
                     pid: pid.as_u32(),
                     name: proc.name().to_string_lossy().to_string(),
                     cpu_usage: proc.cpu_usage(),
                     memory_mb: proc_mem / (1024 * 1024),
                     memory_percent: mem_pct,
+                    disk_read_bytes: disk_usage.read_bytes,
+                    disk_written_bytes: disk_usage.written_bytes,
+                    disk_total_read_bytes: disk_usage.total_read_bytes,
+                    disk_total_written_bytes: disk_usage.total_written_bytes,
                 }
             })
             .collect();
+
+        // Fallback for disk total speeds if /proc/diskstats was 0
+        if total_read_bps == 0 && total_write_bps == 0 {
+            for p in &all_procs {
+                total_read_bps += p.disk_read_bytes;
+                total_write_bps += p.disk_written_bytes;
+            }
+        }
+
+        let total_disk_read_speed_mb = (total_read_bps as f32) / (1024.0 * 1024.0);
+        let total_disk_write_speed_mb = (total_write_bps as f32) / (1024.0 * 1024.0);
 
         // Sort for Top 5 CPU
         let mut top_cpu_processes = all_procs.clone();
@@ -190,9 +290,24 @@ impl TelemetryCollector {
         top_cpu_processes.truncate(5);
 
         // Sort for Top 5 Memory
-        all_procs.sort_by(|a, b| b.memory_mb.cmp(&a.memory_mb));
-        all_procs.truncate(5);
-        let top_memory_processes = all_procs;
+        let mut top_memory_processes = all_procs.clone();
+        top_memory_processes.sort_by(|a, b| b.memory_mb.cmp(&a.memory_mb));
+        top_memory_processes.truncate(5);
+
+        // Sort for Top 5 Disk I/O (active first, fallback to cumulative)
+        let mut top_disk_processes = all_procs;
+        top_disk_processes.sort_by(|a, b| {
+            let a_active = a.disk_read_bytes + a.disk_written_bytes;
+            let b_active = b.disk_read_bytes + b.disk_written_bytes;
+            if a_active != b_active {
+                b_active.cmp(&a_active)
+            } else {
+                let a_total = a.disk_total_read_bytes + a.disk_total_written_bytes;
+                let b_total = b.disk_total_read_bytes + b.disk_total_written_bytes;
+                b_total.cmp(&a_total)
+            }
+        });
+        top_disk_processes.truncate(5);
 
         // Determine Overall Status Level
         let status_level = if cpu_usage_total > 90.0 || memory_percent > 90.0 {
@@ -219,11 +334,13 @@ impl TelemetryCollector {
             swap_used_mb,
             swap_percent,
             disks: disk_list,
-            total_disk_read_speed_mb: 0.0,
-            total_disk_write_speed_mb: 0.0,
+            total_disk_read_speed_mb,
+            total_disk_write_speed_mb,
             top_cpu_processes,
             top_memory_processes,
+            top_disk_processes,
             status_level,
         }
     }
 }
+

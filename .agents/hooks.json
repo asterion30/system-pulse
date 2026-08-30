@@ -1,0 +1,16 @@
+{
+  "matrix1-qa-auditor": {
+    "post_tool_execution": [
+      {
+        "matcher": "write_file|replace_file_content|multi_replace_file_content",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cargo check",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
