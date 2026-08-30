@@ -28,3 +28,11 @@ path = "src/main.rs"
 [[bin]]
 name = "system-cli-pulse"
 path = "src/cli_main.rs"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+
